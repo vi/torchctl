@@ -1,0 +1,10 @@
+[package]
+name = "torchctl"
+version = "0.1.0"
+authors = ["Vitaly _Vi Shukela <vi0oss@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+nix = "0.13.0"
+strum = "0.15.0"
+strum_macros = "0.15.0"
