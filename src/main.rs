@@ -146,7 +146,7 @@ pub extern "C" fn main(argc: c_int, argv: *mut *mut c_char) -> c_int {
     let cmd = if let Some(x) = getcmd(argc, argv) {
         x
     } else {
-        stderr("Usage: torchctl {serve|up|down}\n");
+        stderr("Usage: torchctl {serve|up|down|quit}\n");
         return 1;
     };
 
