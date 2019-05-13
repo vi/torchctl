@@ -9,6 +9,7 @@ const DIR: &[u8] = b"/sys/devices/platform/soc/c440000.qcom,spmi/spmi-0/spmi0-03
 
 static MODES : &'static [&'static dyn TorchMode] = &[
     &JustWriteValsToSysfs(Off),
+    &UltraDimPWM,
     &JustWriteValsToSysfs(Dim),
     &JustWriteValsToSysfs(SemiDim),
     &JustWriteValsToSysfs(Bright),
@@ -23,8 +24,8 @@ use crate::util::stderr;
 
 /// init called when entering a mode, term when exiting it
 trait TorchMode : Send + Sync {
-    fn init(&self) -> Result<()>;
-    fn term(&self) -> Result<()>;
+    fn init(&self, _:&mut GlobalState) -> Result<()>;
+    fn term(&self, _:&mut GlobalState) -> Result<()>;
 }
 
 
@@ -84,13 +85,20 @@ declare_brightness_settings! {
 struct JustWriteValsToSysfs<S:BrightnessSettings>(S);
 
 
+/// Software PWM, also using sysfs
+#[derive(Default)]
+struct UltraDimPWM;
+
+
 #[path="impls.rs"]
 mod impls;
+pub use impls::GlobalState;
 
 
 
 pub struct Torch {
     state: usize,
+    global_state: GlobalState,
 }
 
 pub enum Adjust {
@@ -107,6 +115,7 @@ impl Torch {
     pub fn new() -> Torch {
         Torch {
             state: 0,
+            global_state: GlobalState::default(),
         }
     }
     pub fn init(&mut self) -> Result<()> {
@@ -132,9 +141,9 @@ impl Torch {
             stderr("NO CHANGE\n");
             Ok(self.need_timeout())
         } else {
-            unsafe{MODES.get_unchecked(self.state)}.term()?;
+            unsafe{MODES.get_unchecked(self.state)}.term(&mut self.global_state)?;
             self.state = newstate;
-            unsafe{MODES.get_unchecked(self.state)}.init()?;
+            unsafe{MODES.get_unchecked(self.state)}.init(&mut self.global_state)?;
             Ok(self.need_timeout())
         }
     }
