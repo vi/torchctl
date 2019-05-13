@@ -8,3 +8,13 @@ edition = "2018"
 nix = "0.13.0"
 strum = "0.15.0"
 strum_macros = "0.15.0"
+
+[profile.release]
+opt-level = "s"
+debug = false
+rpath = false
+lto = true
+debug-assertions = false
+codegen-units = 1
+incremental = false
+panic = 'abort'

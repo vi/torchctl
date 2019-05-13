@@ -23,6 +23,7 @@ enum Cmd {
     Serve,
     Up,
     Down,
+    Quit,
 }
 
 fn getcmd(argc: c_int, argv: *mut *mut c_char) -> Option<Cmd> {
@@ -63,17 +64,21 @@ fn serve() -> Result<()> {
 
         let mut buf = [0u8; 4];
         let l = recv(c, &mut buf[..], MsgFlags::empty())?;
-        let buf = unsafe { from_raw_parts(&buf as *const u8, l) };
+        let buf = unsafe { buf[..].get_unchecked(..l) };
 
         if let Err(e) = match buf {
             b"up" => {
                 stderr("UP\n");
                 m.adjust(torch::Adjust::Up)
-            }
+            },
             b"down" => {
                 stderr("DOWN\n");
                 m.adjust(torch::Adjust::Down)
-            }
+            },
+            b"quit" => {
+                stderr("QUIT\n");
+                break;
+            },
             _ => {
                 stderr("Invalid control packet\n");
                 Ok(())
@@ -82,6 +87,7 @@ fn serve() -> Result<()> {
             printerr(e);
         }
     }
+    return Ok(())
 }
 
 fn notify(cmd: Cmd) -> Result<()> {
@@ -96,6 +102,7 @@ fn notify(cmd: Cmd) -> Result<()> {
     let buf: &[u8] = match cmd {
         Cmd::Up => b"up",
         Cmd::Down => b"down",
+        Cmd::Quit => b"quit",
         _ => unsafe { std::hint::unreachable_unchecked() },
     };
 
@@ -107,7 +114,7 @@ fn notify(cmd: Cmd) -> Result<()> {
 fn run(cmd: Cmd) -> Result<()> {
     match cmd {
         Cmd::Serve => serve(),
-        Cmd::Up | Cmd::Down => notify(cmd),
+        Cmd::Up | Cmd::Down | Cmd::Quit => notify(cmd),
     }
 }
 
