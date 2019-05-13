@@ -59,12 +59,16 @@ fn serve() -> Result<()> {
     listen(s, 1)?;
 
     let mut m = torch::Torch::new();
+    m.init()?;
 
     loop {
         let ret = accept(s);
         if ret == Err(nix::Error::Sys(nix::errno::Errno::EAGAIN)) {
             stderr("TIMEOUT\n");
             m.time_passed()?;
+            setsockopt(s, ReceiveTimeout, &TimeValLike::seconds(
+                0,
+            ))?;
             continue;
         }
         let c = ret?;
