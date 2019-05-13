@@ -5,12 +5,12 @@ const SOCK: &[u8] = b"torchctl";
 use strum_macros::EnumString;
 
 use nix::libc::{c_char, c_int, strlen};
-use nix::sys::socket::{
-    accept, bind, connect, listen, recv, send, shutdown, socket, AddressFamily, MsgFlags, Shutdown,
-    SockAddr, SockFlag, SockType, UnixAddr, setsockopt
-};
 use nix::sys::socket::sockopt::ReceiveTimeout;
-use nix::sys::time::{TimeValLike};
+use nix::sys::socket::{
+    accept, bind, connect, listen, recv, send, setsockopt, shutdown, socket, AddressFamily,
+    MsgFlags, Shutdown, SockAddr, SockFlag, SockType, UnixAddr,
+};
+use nix::sys::time::TimeValLike;
 use nix::Result;
 
 mod torch;
@@ -49,49 +49,46 @@ fn getcmd(argc: c_int, argv: *mut *mut c_char) -> Option<Cmd> {
 }
 
 fn serve() -> Result<()> {
-    let s = socket(
+    let sock = socket(
         AddressFamily::Unix,
         SockType::SeqPacket,
         SockFlag::SOCK_CLOEXEC,
         None,
     )?;
-    bind(s, &SockAddr::Unix(UnixAddr::new_abstract(SOCK)?))?;
-    listen(s, 1)?;
+    bind(sock, &SockAddr::Unix(UnixAddr::new_abstract(SOCK)?))?;
+    listen(sock, 1)?;
 
-    let mut m = torch::Torch::new();
-    m.init()?;
+    let mut torch = torch::Torch::new();
+    torch.init()?;
 
     loop {
-        let ret = accept(s);
+        let ret = accept(sock);
         if ret == Err(nix::Error::Sys(nix::errno::Errno::EAGAIN)) {
             stderr("TIMEOUT\n");
-            m.time_passed()?;
-            setsockopt(s, ReceiveTimeout, &TimeValLike::seconds(
-                0,
-            ))?;
+            torch.time_passed()?;
+            setsockopt(sock, ReceiveTimeout, &TimeValLike::seconds(0))?;
             continue;
         }
-        let c = ret?;
-        shutdown(s, Shutdown::Write)?;
+        let client = ret?;
+        shutdown(client, Shutdown::Write)?;
 
         let mut buf = [0u8; 4];
-        let l = recv(c, &mut buf[..], MsgFlags::empty())?;
+        let l = recv(client, &mut buf[..], MsgFlags::empty())?;
         let buf = unsafe { buf[..].get_unchecked(..l) };
 
-        
         let ret = match buf {
             b"up" => {
                 stderr("UP\n");
-                m.adjust(torch::Adjust::Up)
-            },
+                torch.adjust(torch::Adjust::Up)
+            }
             b"down" => {
                 stderr("DOWN\n");
-                m.adjust(torch::Adjust::Down)
-            },
+                torch.adjust(torch::Adjust::Down)
+            }
             b"quit" => {
                 stderr("QUIT\n");
                 break;
-            },
+            }
             _ => {
                 stderr("Invalid control packet\n");
                 Ok(torch::NeedTimeout::No)
@@ -101,19 +98,19 @@ fn serve() -> Result<()> {
             Err(e) => printerr(e),
             Ok(t) => match t {
                 torch::NeedTimeout::No => {
-                    setsockopt(s, ReceiveTimeout, &TimeValLike::seconds(
-                        0,
-                    ))?;
-                },
+                    setsockopt(sock, ReceiveTimeout, &TimeValLike::seconds(0))?;
+                }
                 torch::NeedTimeout::Yes => {
-                    setsockopt(s, ReceiveTimeout, &TimeValLike::seconds(
-                        torch::FALLBACK_FROM_VERY_BRIGHT_SECONDS,
-                    ))?;
-                },
-            }
+                    setsockopt(
+                        sock,
+                        ReceiveTimeout,
+                        &TimeValLike::seconds(torch::FALLBACK_FROM_VERY_BRIGHT_SECONDS),
+                    )?;
+                }
+            },
         }
     }
-    return Ok(())
+    Ok(())
 }
 
 fn notify(cmd: Cmd) -> Result<()> {

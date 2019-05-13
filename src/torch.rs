@@ -1,13 +1,10 @@
-#![allow(unused)]
-#![warn(unused_must_use)]
-
-const SWITCH : &[u8] = b"led:switch_0/brightness";
-const TOR1 : &[u8] = b"led:torch_0/brightness";
-const TOR2 : &[u8] = b"led:torch_1/brightness";
+const SWITCH: &[u8] = b"led:switch_0/brightness";
+const TOR1: &[u8] = b"led:torch_0/brightness";
+const TOR2: &[u8] = b"led:torch_1/brightness";
 
 const DIR: &[u8] = b"/sys/devices/platform/soc/c440000.qcom,spmi/spmi-0/spmi0-03/c440000.qcom,spmi:qcom,pmi8998@3:qcom,leds@d300/leds";
 
-static MODES : &'static [&'static dyn TorchMode] = &[
+static MODES: &'static [&'static dyn TorchMode] = &[
     &JustWriteValsToSysfs(Off),
     &UltraDimPWM,
     &JustWriteValsToSysfs(Dim),
@@ -16,21 +13,20 @@ static MODES : &'static [&'static dyn TorchMode] = &[
     &JustWriteValsToSysfs(VeryBright),
 ];
 
-pub const FALLBACK_FROM_VERY_BRIGHT_SECONDS : i64 = 5;
+pub const FALLBACK_FROM_VERY_BRIGHT_SECONDS: i64 = 5;
 
-use nix::Result;
-use nix::unistd::chdir;
 use crate::util::stderr;
+use nix::unistd::chdir;
+use nix::Result;
 
 /// init called when entering a mode, term when exiting it
-trait TorchMode : Send + Sync {
-    fn init(&self, _:&mut GlobalState) -> Result<()>;
-    fn term(&self, _:&mut GlobalState) -> Result<()>;
+trait TorchMode: Send + Sync {
+    fn init(&self, _: &mut GlobalState) -> Result<()>;
+    fn term(&self, _: &mut GlobalState) -> Result<()>;
 }
 
-
 /// Values to use for WriteVal
-trait BrightnessSettings : Default + Send + Sync {
+trait BrightnessSettings: Default + Send + Sync {
     const BR1: &'static [u8];
     const BR2: &'static [u8];
     const SW: &'static [u8];
@@ -38,13 +34,14 @@ trait BrightnessSettings : Default + Send + Sync {
 
 macro_rules! declare_brightness_settings {
     (name=$name:ident, BR1=$br1:expr, BR2=$br2:expr, SW=$sw:expr,) => {
-        #[derive(Default)] struct $name;
+        #[derive(Default)]
+        struct $name;
         impl BrightnessSettings for $name {
-            const BR1 : &'static [u8] = $br1;
-            const BR2 : &'static [u8] = $br2;
-            const SW : &'static [u8] = $sw;
+            const BR1: &'static [u8] = $br1;
+            const BR2: &'static [u8] = $br2;
+            const SW: &'static [u8] = $sw;
         }
-    }
+    };
 }
 
 declare_brightness_settings! {
@@ -82,19 +79,15 @@ declare_brightness_settings! {
 
 /// Torch configuration that just writes some values to sysfs
 #[derive(Default)]
-struct JustWriteValsToSysfs<S:BrightnessSettings>(S);
-
+struct JustWriteValsToSysfs<S: BrightnessSettings>(S);
 
 /// Software PWM, also using sysfs
 #[derive(Default)]
 struct UltraDimPWM;
 
-
-#[path="impls.rs"]
+#[path = "impls.rs"]
 mod impls;
 pub use impls::GlobalState;
-
-
 
 pub struct Torch {
     state: usize,
@@ -130,20 +123,16 @@ impl Torch {
     }
     pub fn adjust(&mut self, d: Adjust) -> Result<NeedTimeout> {
         let newstate = match d {
-            Adjust::Up => {
-               (self.state + 1).min(MODES.len() - 1)
-            },
-            Adjust::Down => {
-                self.state.saturating_sub(1)
-            },
+            Adjust::Up => (self.state + 1).min(MODES.len() - 1),
+            Adjust::Down => self.state.saturating_sub(1),
         };
         if self.state == newstate {
             stderr("NO CHANGE\n");
             Ok(self.need_timeout())
         } else {
-            unsafe{MODES.get_unchecked(self.state)}.term(&mut self.global_state)?;
+            unsafe { MODES.get_unchecked(self.state) }.term(&mut self.global_state)?;
             self.state = newstate;
-            unsafe{MODES.get_unchecked(self.state)}.init(&mut self.global_state)?;
+            unsafe { MODES.get_unchecked(self.state) }.init(&mut self.global_state)?;
             Ok(self.need_timeout())
         }
     }
