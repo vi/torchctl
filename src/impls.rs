@@ -1,3 +1,7 @@
+const WAKE_LOCK: &[u8] = b"/sys/power/wake_lock";
+const WAKE_UNLOCK: &[u8] = b"/sys/power/wake_unlock";
+const WAKE_LOCK_NAME: &[u8] = b"torchctl";
+
 use nix::fcntl::{open, OFlag};
 use nix::sys::signal::{kill, Signal};
 use nix::sys::stat::Mode;
@@ -48,6 +52,8 @@ impl TorchMode for UltraDimPWM {
                     sched_setscheduler(0, SCHED_FIFO, &param);
                 }
 
+                writefile(WAKE_LOCK, WAKE_LOCK_NAME)?;
+
                 //let sleeper = spin_sleep::SpinSleeper::default();
 
                 loop {
@@ -90,6 +96,7 @@ impl TorchMode for UltraDimPWM {
             unsafe {
                 nix::libc::waitpid(pid.as_raw(), &mut status, 0);
             }
+            writefile(WAKE_UNLOCK, WAKE_LOCK_NAME)?;
             gs.pid = None;
         }
         Ok(())
