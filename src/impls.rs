@@ -52,10 +52,29 @@ impl TorchMode for UltraDimPWM {
                 gs.pid = Some(child);
             },
             ForkResult::Child => {
-                writefile(SWITCH, b"0")?;
-                writefile(TOR1, b"0")?;
-                writefile(TOR2, b"1")?;
-                writefile(SWITCH, b"1")?;
+                use nix::libc::sched_param;
+                use nix::libc::sched_setscheduler;
+                //use nix::libc::SCHED_FIFO;
+                const SCHED_FIFO : nix::libc::c_int = 1;
+
+                let param = sched_param { sched_priority : 10 };
+                unsafe { sched_setscheduler(0, SCHED_FIFO, &param); }
+
+                //let sleeper = spin_sleep::SpinSleeper::default();
+
+                loop {
+                    writefile(SWITCH, b"0")?;
+                    let mut sl = nix::libc::timespec { tv_sec: 0, tv_nsec:5_000_000 };
+                    unsafe { nix::libc::nanosleep(&sl, &mut sl); }
+                    //sleeper.sleep_ns(5_000_000);
+                    writefile(TOR1, b"0")?;
+                    writefile(TOR2, b"1")?;
+                    writefile(SWITCH, b"1")?;
+                    let mut sl = nix::libc::timespec { tv_sec: 0, tv_nsec:500_000 };
+                    unsafe { nix::libc::nanosleep(&sl, &mut sl); }
+                    //sleeper.sleep_ns(500_000);
+                }
+
                 unsafe { nix::libc::_exit(0) };
             },
         }
