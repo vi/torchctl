@@ -7,8 +7,10 @@ use strum_macros::EnumString;
 use nix::libc::{c_char, c_int, strlen};
 use nix::sys::socket::{
     accept, bind, connect, listen, recv, send, shutdown, socket, AddressFamily, MsgFlags, Shutdown,
-    SockAddr, SockFlag, SockType, UnixAddr,
+    SockAddr, SockFlag, SockType, UnixAddr, setsockopt
 };
+use nix::sys::socket::sockopt::ReceiveTimeout;
+use nix::sys::time::{TimeValLike};
 use nix::Result;
 
 mod torch;
@@ -59,14 +61,21 @@ fn serve() -> Result<()> {
     let mut m = torch::Torch::new();
 
     loop {
-        let c = accept(s)?;
+        let ret = accept(s);
+        if ret == Err(nix::Error::Sys(nix::errno::Errno::EAGAIN)) {
+            stderr("TIMEOUT\n");
+            m.time_passed()?;
+            continue;
+        }
+        let c = ret?;
         shutdown(s, Shutdown::Write)?;
 
         let mut buf = [0u8; 4];
         let l = recv(c, &mut buf[..], MsgFlags::empty())?;
         let buf = unsafe { buf[..].get_unchecked(..l) };
 
-        if let Err(e) = match buf {
+        
+        let ret = match buf {
             b"up" => {
                 stderr("UP\n");
                 m.adjust(torch::Adjust::Up)
@@ -81,10 +90,23 @@ fn serve() -> Result<()> {
             },
             _ => {
                 stderr("Invalid control packet\n");
-                Ok(())
+                Ok(torch::NeedTimeout::No)
             }
-        } {
-            printerr(e);
+        };
+        match ret {
+            Err(e) => printerr(e),
+            Ok(t) => match t {
+                torch::NeedTimeout::No => {
+                    setsockopt(s, ReceiveTimeout, &TimeValLike::seconds(
+                        0,
+                    ))?;
+                },
+                torch::NeedTimeout::Yes => {
+                    setsockopt(s, ReceiveTimeout, &TimeValLike::seconds(
+                        torch::FALLBACK_FROM_VERY_BRIGHT_SECONDS,
+                    ))?;
+                },
+            }
         }
     }
     return Ok(())

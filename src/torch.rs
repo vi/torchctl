@@ -9,7 +9,10 @@ static MODES : &'static [&'static dyn TorchMode] = &[
     &JustWriteValsToSysfs(Off),
     &JustWriteValsToSysfs(Dim),
     &JustWriteValsToSysfs(Bright),
+    &JustWriteValsToSysfs(VeryBright),
 ];
+
+pub const FALLBACK_FROM_VERY_BRIGHT_SECONDS : i64 = 5;
 
 use nix::Result;
 use crate::util::stderr;
@@ -59,6 +62,13 @@ declare_brightness_settings! {
     SW=b"1",
 }
 
+declare_brightness_settings! {
+    name=VeryBright,
+    BR1=b"350",
+    BR2=b"350",
+    SW=b"1",
+}
+
 /// Torch configuration that just writes some values to sysfs
 #[derive(Default)]
 struct JustWriteValsToSysfs<S:BrightnessSettings>(S);
@@ -78,13 +88,18 @@ pub enum Adjust {
     Down,
 }
 
+pub enum NeedTimeout {
+    No,
+    Yes,
+}
+
 impl Torch {
     pub fn new() -> Torch {
         Torch {
             state: 0,
         }
     }
-    pub fn adjust(&mut self, d: Adjust) -> Result<()> {
+    pub fn adjust(&mut self, d: Adjust) -> Result<NeedTimeout> {
         let newstate = match d {
             Adjust::Up => {
                (self.state + 1).min(MODES.len() - 1)
@@ -95,12 +110,22 @@ impl Torch {
         };
         if self.state == newstate {
             stderr("NO CHANGE\n");
-            Ok(())
+            Ok(NeedTimeout::No)
         } else {
             unsafe{MODES.get_unchecked(self.state)}.term()?;
             self.state = newstate;
             unsafe{MODES.get_unchecked(self.state)}.init()?;
-            Ok(())
+            if self.state == MODES.len() - 1 {
+                Ok(NeedTimeout::Yes)
+            } else {
+                Ok(NeedTimeout::No)
+            }
         }
+    }
+    pub fn time_passed(&mut self) -> Result<()> {
+        if self.state == MODES.len() - 1 {
+            let _ = self.adjust(Adjust::Down)?;
+        }
+        Ok(())
     }
 }
