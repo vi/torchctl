@@ -63,6 +63,9 @@ fn serve() -> Result<()> {
 
     loop {
         let ret = accept(sock);
+        if ret == Err(nix::Error::Sys(nix::errno::Errno::EINTR)) {
+            continue;
+        }
         if ret == Err(nix::Error::Sys(nix::errno::Errno::EAGAIN)) {
             stderr("TIMEOUT\n");
             torch.time_passed()?;
